@@ -1,0 +1,5 @@
+main-test.py
+resultado_compressao_*.png
+test_frequency_compression.py
+__pycache__/
+.pytest_cache/
