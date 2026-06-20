@@ -1,25 +1,49 @@
 import numpy as np
 
+"""Módulo de segmentacao com suas pipelines.
+
+Uso:
+1. Instanciar `Segmentation` com os limiares e kernel desejados.
+2. Ajustar parametros em tempo de execucao com `set_params`, se fizer sentido.
+3. Chamar `closing_pipeline` e `sobel_watershed_pipeline`.
+
+Os demais metodos sao internos (prefixo `_`) e existem para compor as etapas
+dos pipelines.
+"""
+
 class Segmentation:
+    """Classe de alto nivel para segmentacao por Fechamento e Sobel+Watershed."""
+
     def __init__(self, intensity_threshold=128, gradient_threshold=30, watershed_threshold=50, kernel_size=3):
         """Inicializa os limiares e parametros morfologicos usados nas pipelines."""
         self.intensity_threshold = intensity_threshold
         self.gradient_threshold = gradient_threshold
         self.watershed_threshold = watershed_threshold
         self.kernel_size = kernel_size
+
+    def set_params(self, intensity_threshold=None, gradient_threshold=None, watershed_threshold=None, kernel_size=None):
+        """Atualiza parametros da instancia sem necessidade de reinstanciar a classe."""
+        if intensity_threshold is not None:
+            self.intensity_threshold = intensity_threshold
+        if gradient_threshold is not None:
+            self.gradient_threshold = gradient_threshold
+        if watershed_threshold is not None:
+            self.watershed_threshold = watershed_threshold
+        if kernel_size is not None:
+            self.kernel_size = kernel_size
     
-    def to_grayscale(self, image):
+    def _to_grayscale(self, image):
         """Converte uma imagem colorida (RGB) para tons de cinza usando a fórmula de luminância padrão."""
         if image.ndim == 3:
             return (0.299 * image[:, :, 0] + 0.587 * image[:, :, 1] + 0.114 * image[:, :, 2]).astype(np.uint8)
         return image
 
-    def limiar(self, image, threshold):
+    def _limiar(self, image, threshold):
         """Binariza a imagem em 0/255 usando o limiar informado."""
-        img_gray = self.to_grayscale(image)
+        img_gray = self._to_grayscale(image)
         return (img_gray >= threshold).astype(np.uint8) * 255
     
-    def erosion(self, image):
+    def _erosion(self, image):
         """Aplica erosao binaria usando um kernel quadrado de tamanho configuravel."""
         pad = self.kernel_size // 2
         padded = np.pad(image, pad, mode='edge')
@@ -31,7 +55,7 @@ class Segmentation:
                     out[y, x] = 255
         return out
     
-    def dilation(self, image):
+    def _dilation(self, image):
         """Aplica dilatacao binaria usando um kernel quadrado de tamanho configuravel."""
         pad = self.kernel_size // 2
         padded = np.pad(image, pad, mode='edge')
@@ -45,11 +69,11 @@ class Segmentation:
 
     def closing_pipeline(self, image, already_binary=False):
         """Executa fechamento morfologico (dilatacao seguida de erosao)."""
-        binary_image = image if already_binary else self.limiar(image, self.intensity_threshold)
-        dilated = self.dilation(binary_image)
-        return self.erosion(dilated)
+        binary_image = image if already_binary else self._limiar(image, self.intensity_threshold)
+        dilated = self._dilation(binary_image)
+        return self._erosion(dilated)
     
-    def convolution(self, img_gray, kernel):
+    def _convolution(self, img_gray, kernel):
         """Calcula a convolucao 2D manual de uma imagem em tons de cinza com um kernel."""
         h, w = img_gray.shape
         kh, kw = kernel.shape
@@ -63,22 +87,28 @@ class Segmentation:
                 out[y, x] = np.sum(window * kernel_flipped)
         return out
 
-    def gaussian_kernel(self, size, sigma):
+    def _gaussian_kernel(self, size, sigma):
         """Gera um kernel Gaussiano 2D normalizado."""
         ax = np.linspace(-(size // 2), size // 2, size)
         xx, yy = np.meshgrid(ax, ax)
         kernel = np.exp(-(xx**2 + yy**2) / (2.0 * sigma**2))
         return kernel / np.sum(kernel)
 
-    def sobel(self, img_blur):
+    def _sobel(self, img_blur):
         """Calcula magnitude e direcao do gradiente com os filtros de Sobel."""
         sobel_x = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float32)
         sobel_y = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=np.float32)
-        gx = self.convolution(img_blur, sobel_x)
-        gy = self.convolution(img_blur, sobel_y)
-        return np.sqrt(gx**2 + gy**2)
+        gx = self._convolution(img_blur, sobel_x)
+        gy = self._convolution(img_blur, sobel_y)
+        
+        magnitude = np.sqrt(gx**2 + gy**2)
+        
+        if np.max(magnitude) > 0:
+            magnitude = (magnitude / np.max(magnitude) * 255).astype(np.uint8)
+        
+        return magnitude
     
-    def distance_transform(self, binary_image):
+    def _distance_transform(self, binary_image):
         """Estima a distancia de cada pixel de primeiro plano ate o fundo."""
         h, w = binary_image.shape
         dist = np.where(binary_image == 0, 0, np.inf).astype(np.float32)
@@ -89,12 +119,12 @@ class Segmentation:
                                          dist[y, x-1], dist[y, x+1]]) + 1
         return dist
 
-    def get_markers(self, binary_image):
+    def _get_markers(self, binary_image):
         """Cria marcadores iniciais para o watershed a partir do mapa de distancia."""
-        dist = self.distance_transform(binary_image)
+        dist = self._distance_transform(binary_image)
         return (dist > (0.5 * np.max(dist))).astype(np.int32)
 
-    def watershed_segmentation(self, magnitude, markers):
+    def _watershed_segmentation(self, magnitude, markers):
         """Propaga marcadores em regioes de baixo gradiente para segmentar a imagem."""
         h, w = magnitude.shape
         labels = markers.copy()
@@ -112,9 +142,9 @@ class Segmentation:
 
     def sobel_watershed_pipeline(self, image):
         """Executa pipeline de segmentacao com suavizacao, Sobel e watershed."""
-        img_gray = self.to_grayscale(image).astype(np.float32)
-        img_blur = self.convolution(img_gray, self.gaussian_kernel(3, 1.0))
-        magnitude = self.sobel(img_blur)
-        mask = 255 - self.limiar(magnitude, self.gradient_threshold)
-        markers = self.get_markers(mask)
-        return self.watershed_segmentation(magnitude, markers)
+        img_gray = self._to_grayscale(image).astype(np.float32)
+        img_blur = self._convolution(img_gray, self._gaussian_kernel(3, 1.0))
+        magnitude = self._sobel(img_blur)
+        mask = self._limiar(255 - magnitude, self.gradient_threshold)
+        markers = self._get_markers(mask)
+        return self._watershed_segmentation(magnitude, markers)
