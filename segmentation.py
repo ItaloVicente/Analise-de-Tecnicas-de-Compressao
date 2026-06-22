@@ -40,9 +40,10 @@ class Segmentation:
         return image
 
     def _limiar(self, image, threshold):
-        """Binariza a imagem em 0/255 usando o limiar informado."""
         img_gray = self._to_grayscale(image)
-        return (img_gray >= threshold).astype(np.uint8) * 255
+        # Se o threshold for o padrão (128), usamos a média da própria imagem
+        actual_threshold = threshold if threshold != 128 else np.mean(img_gray)
+        return (img_gray >= actual_threshold).astype(np.uint8) * 255
     
     def _erosion(self, image):
         """Aplica erosao binaria usando um kernel quadrado de tamanho configuravel."""
