@@ -1,68 +1,75 @@
 import numpy as np
 
 def iou(y_true, y_pred):
+    """Calcula o IoU para uma única imagem."""
+    y_true_bin = (y_true > 0)
+    y_pred_bin = (y_pred > 0)
 
-    y_true = y_true.astype(bool)
-    y_pred = y_pred.astype(bool)
-
-    intersection = 0
-    union = 0
-
-    rows, cols = y_true.shape
-
-    for i in range(rows):
-        for j in range(cols):
-
-            true = y_true[i][j]
-            pred = y_pred[i][j]
-
-            if true or pred:
-                union += 1  
-
-                if true and pred:
-                    intersection += 1
+    intersection = np.logical_and(y_true_bin, y_pred_bin).sum()
+    union = np.logical_or(y_true_bin, y_pred_bin).sum()
 
     if union == 0:
-        return 1.0 
+        return 1.0
 
     return intersection / union
 
 def mean_iou(y_trues, y_preds):
+    """Calcula a média do IoU para um lote (batch) de imagens."""
+    # Converte a lista de imagens em um array 3D e binariza tudo de uma vez
+    y_trues_bin = np.array(y_trues) > 0
+    y_preds_bin = np.array(y_preds) > 0
 
-    total = 0
-    n = len(y_trues)
+    # Calcula intersecção e união somando ao longo dos eixos X e Y (axis=1 e 2)
+    intersections = np.logical_and(y_trues_bin, y_preds_bin).sum(axis=(1, 2))
+    unions = np.logical_or(y_trues_bin, y_preds_bin).sum(axis=(1, 2))
 
-    for i in range(n):
-        total += iou(y_trues[i], y_preds[i])
+    # np.where evita a divisão por zero: se a união for 0, o IoU é 1.0
+    ious = np.divide(intersections, unions, out=np.ones_like(intersections, dtype=float), where=(unions != 0))
+    
+    return ious.mean()
 
-    return total / n
+def dice(y_true, y_pred):
+    """Calcula o Dice coefficient para uma única imagem."""
+    y_true_bin = (y_true > 0)
+    y_pred_bin = (y_pred > 0)
+
+    intersection = np.logical_and(y_true_bin, y_pred_bin).sum()
+    denominator = y_true_bin.sum() + y_pred_bin.sum()
+
+    if denominator == 0:
+        return 1.0
+
+    return (2.0 * intersection) / denominator
+
+def mean_dice(y_trues, y_preds):
+    """Calcula a média do Dice para um lote (batch) de imagens."""
+    y_trues_bin = np.array(y_trues) > 0
+    y_preds_bin = np.array(y_preds) > 0
+
+    intersections = np.logical_and(y_trues_bin, y_preds_bin).sum(axis=(1, 2))
+    denominators = y_trues_bin.sum(axis=(1, 2)) + y_preds_bin.sum(axis=(1, 2))
+
+    dices = np.divide((2.0 * intersections), denominators, out=np.ones_like(denominators, dtype=float), where=(denominators != 0))
+    
+    return dices.mean()
 
 def pixel_accuracy(y_trues, y_preds):
+    """
+    Calcula a acurácia global de pixels para todo o lote.
+    Compara todas as matrizes inteiras em uma única operação.
+    """
+    y_trues_bin = np.array(y_trues) > 0
+    y_preds_bin = np.array(y_preds) > 0
 
-    tp = tn = fp = fn = 0
+    # .mean() numa matriz booleana já retorna a proporção de acertos (True)
+    return (y_trues_bin == y_preds_bin).mean()
 
-    for img_idx in range(len(y_trues)):
+def changed_pixels(y_trues, y_preds):
+    """
+    Calcula a taxa de pixels errados (diferentes) para todo o lote.
+    """
+    y_trues_bin = np.array(y_trues) > 0
+    y_preds_bin = np.array(y_preds) > 0
 
-        y_true = y_trues[img_idx]
-        y_pred = y_preds[img_idx]
-
-        rows, cols = y_true.shape
-
-        for i in range(rows):
-            for j in range(cols):
-
-                t = y_true[i][j]
-                p = y_pred[i][j]
-
-                if t == 1 and p == 1:
-                    tp += 1
-                elif t == 0 and p == 1:
-                    fp += 1
-                elif t == 1 and p == 0:
-                    fn += 1
-                else:
-                    tn += 1
-
-    total = tp + tn + fp + fn
-
-    return (tp + tn) / total
+    # Proporção de onde os pixels divergem (True)
+    return (y_trues_bin != y_preds_bin).mean()
