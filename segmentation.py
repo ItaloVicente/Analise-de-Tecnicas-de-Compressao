@@ -40,10 +40,9 @@ class Segmentation:
         return image
 
     def _limiar(self, image, threshold):
-        img_gray = self._to_grayscale(image)
         # Se o threshold for o padrão (128), usamos a média da própria imagem
-        actual_threshold = threshold if threshold != 128 else np.mean(img_gray)
-        return (img_gray >= actual_threshold).astype(np.uint8) * 255
+        actual_threshold = threshold if threshold != 128 else np.mean(image)
+        return (image >= actual_threshold).astype(np.uint8) * 255
     
     def _erosion(self, image):
         """Aplica erosao binaria usando um kernel quadrado de tamanho configuravel."""
@@ -202,8 +201,7 @@ class Segmentation:
 
     def sobel_watershed_pipeline(self, image):
         """Executa pipeline de segmentacao com suavizacao, Sobel e watershed."""
-        img_gray = self._to_grayscale(image).astype(np.float32)
-        img_blur = self._convolution(img_gray, self._gaussian_kernel(3, 1.0))
+        img_blur = self._convolution(image, self._gaussian_kernel(3, 1.0))
         magnitude = self._sobel(img_blur)
         mask = (magnitude < float(self.gradient_threshold)).astype(np.uint8) * 255
         markers = self._get_markers(mask)

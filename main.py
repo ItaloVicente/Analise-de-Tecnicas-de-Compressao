@@ -21,6 +21,15 @@ def sample_dataset(dataset_dir, n_samples, seed=42):
     
     return sampled_paths
 
+def rgb_to_gray(imagem_rgb):
+    canal_r = imagem_rgb[:, :, 0]
+    canal_g = imagem_rgb[:, :, 1]
+    canal_b = imagem_rgb[:, :, 2]
+
+    imagem_cinza = 0.299 * canal_r + 0.587 * canal_g + 0.114 * canal_b
+
+    return np.clip(imagem_cinza, 0, 255).astype(np.uint8)
+
 
 def build_original_vector(image_paths):
     images = []
@@ -37,7 +46,7 @@ def build_original_vector(image_paths):
             image = np.clip(image * 255, 0, 255).astype(np.uint8)
 
         # 3. Agora sua função recebe uma matriz puramente de inteiros (0-255) com 3 canais
-        image = converter_para_cinza_na_mao(image)
+        image = rgb_to_gray(image)
 
         images.append(image)
 
